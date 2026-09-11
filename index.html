@@ -483,7 +483,7 @@ function toast(msg, ms = 2600){ const t = $('toast'); t.textContent = msg; t.sty
 
 (function initSetup(){
   const sel = $('inCity');
-  CITIES.forEach((c, i) => { const o = document.createElement('option'); o.value = i; o.textContent = c[0]; sel.appendChild(o); });
+  CITIES.map((c, i) => [c[0], i]).sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, i]) => { const o = document.createElement('option'); o.value = i; o.textContent = name; if (name.startsWith('Kansas City')) o.selected = true; sel.appendChild(o); });
   $('btnStart').addEventListener('click', () => {
     state.name = $('inName').value.trim() || 'Anonymous planner';
     state.klass = $('inClass').value.trim();
@@ -538,7 +538,7 @@ function startGame(){
   base.imagery = L.layerGroup([L.tileLayer(TILE.imagery, {attribution: ESRI_ATTR, maxNativeZoom:19}), L.tileLayer(TILE.labels, {maxNativeZoom:19})]);
   base.topo = L.tileLayer(TILE.topo, {attribution: ESRI_ATTR, maxNativeZoom:19});
   base.gray = L.tileLayer(TILE.gray, {attribution: ESRI_ATTR, maxNativeZoom:16});
-  base.streets.addTo(map);
+  base.topo.addTo(map);
 
   tractLayer = L.geoJSON(null, {style: tractStyle, onEachFeature: (f, l) => l.on('click', () => { if (!activeTool) l.bindPopup(tractPopup(f)).openPopup(); })}).addTo(map);
   epaLayer = L.layerGroup().addTo(map);
@@ -628,13 +628,51 @@ async function loadData(){
   } else banner.style.display = 'none';
 }
 async function fetchJson(url){
-  let r;
+  let r, fetchErr = null;
   try { r = await fetch(url, {mode:'cors', credentials:'omit'}); }
-  catch(e){ throw new Error('network/CORS error (' + (e.message || e) + ')'); }
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const j = await r.json();
+  catch(e){ fetchErr = 'network/CORS error (' + (e.message || e) + ')'; }
+  if (!fetchErr){
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    if (j.error) throw new Error('service error ' + (j.error.code || '') + ' ' + (j.error.message || ''));
+    return j;
+  }
+  // Fallback: JSONP (script tag) avoids CORS entirely; ArcGIS only serves Esri JSON this way, so convert.
+  const wantsGeo = /f=geojson/.test(url);
+  let j;
+  try { j = await jsonp(url.replace('f=geojson', 'f=json')); }
+  catch(e){ throw new Error(fetchErr + '; JSONP fallback also failed (' + (e.message || e) + ')'); }
   if (j.error) throw new Error('service error ' + (j.error.code || '') + ' ' + (j.error.message || ''));
-  return j;
+  return wantsGeo ? esriToGeoJSON(j) : j;
+}
+function jsonp(url){
+  return new Promise((resolve, reject) => {
+    const cb = 'gs_cb_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+    const sc = document.createElement('script');
+    const done = () => { delete window[cb]; sc.remove(); clearTimeout(timer); };
+    window[cb] = d => { done(); resolve(d); };
+    sc.onerror = () => { done(); reject(new Error('script blocked or not found')); };
+    const timer = setTimeout(() => { if (window[cb]){ done(); reject(new Error('timed out')); } }, 45000);
+    sc.src = url + '&callback=' + cb;
+    document.head.appendChild(sc);
+  });
+}
+function esriToGeoJSON(j){
+  const area = ring => { let a = 0; for (let i = 0, n = ring.length; i < n; i++){ const [x1, y1] = ring[i], [x2, y2] = ring[(i + 1) % n]; a += x1 * y2 - x2 * y1; } return a / 2; };
+  const features = (j.features || []).map(f => {
+    const g = f.geometry; let geom = null;
+    if (g && g.x != null) geom = {type:'Point', coordinates:[g.x, g.y]};
+    else if (g && g.rings){
+      const polys = [];
+      for (const ring of g.rings){
+        if (ring.length < 4) continue;
+        if (area(ring) <= 0 || !polys.length) polys.push([ring]); else polys[polys.length - 1].push(ring);
+      }
+      geom = polys.length === 1 ? {type:'Polygon', coordinates: polys[0]} : polys.length ? {type:'MultiPolygon', coordinates: polys} : null;
+    }
+    return {type:'Feature', geometry: geom, properties: f.attributes || {}};
+  });
+  return {type:'FeatureCollection', features, properties:{exceededTransferLimit: !!j.exceededTransferLimit}};
 }
 function setStatus(kind, text){ $('dataStatus').textContent = text; $('dataDot').className = 'dot ' + (kind === 'ok' ? 'ok' : kind === 'bad' ? 'bad' : ''); }
 const bboxStr = b => `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
@@ -694,7 +732,7 @@ async function tractAt(latlng){
   try{
     const p = new URLSearchParams({geometry:`${latlng.lng},${latlng.lat}`, geometryType:'esriGeometryPoint', inSR:'4326', spatialRel:'esriSpatialRelIntersects',
       outFields:'GEOID,NAME,County,State,B17020_calc_pctPovE,B17020_001E', returnGeometry:'false', f:'json'});
-    const r = await fetch(TRACT_URL + '?' + p); const j = await r.json();
+    const j = await fetchJson(TRACT_URL + '?' + p);
     if (j.features && j.features[0]) return j.features[0].attributes;
   }catch(e){ console.error(e); }
   return null;
