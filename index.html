@@ -606,26 +606,46 @@ function tractPopup(f){
 let loadToken = 0;
 async function loadData(){
   const token = ++loadToken;
-  const b = map.getBounds().pad(0.15); lastLoadedBounds = b;
+  let b = map.getBounds().pad(0.15);
+  if (!b.isValid() || b.getNorth() - b.getSouth() > 3 || b.getNorth() - b.getSouth() < 0.02) b = L.latLngBounds([state.downtown.lat - 0.25, state.downtown.lng - 0.4], [state.downtown.lat + 0.25, state.downtown.lng + 0.4]);
+  lastLoadedBounds = b;
   setStatus('loading', 'Loading EPA cleanup sites and Census tracts…');
   await Promise.all([loadEPA(b, token), loadTracts(b, token)]);
   if (token !== loadToken) return;
   const parts = [];
   parts.push(dataOK.epa ? `${epaSites.length} EPA sites loaded` : 'EPA sites failed');
   parts.push(dataOK.tract ? `${tracts.length} Census tracts loaded` : 'Census tracts failed');
-  const ok = dataOK.epa && dataOK.tract;
+  const ok = dataOK.epa && dataOK.tract && epaSites.length > 0 && tracts.length > 0;
   setStatus(ok ? 'ok' : 'bad', parts.join(' · '));
   $('btnRetry').style.display = ok ? 'none' : 'inline-block';
   const banner = $('dataBanner');
-  if (!dataOK.epa && !dataOK.tract){
-    const err = dataErr.epa || dataErr.tract;
-    banner.innerHTML = `<b>Live data did not load.</b> The basemap works, but requests to <code>services.arcgis.com</code> for EPA sites and Census tracts failed.<br>
-      This usually means the page is open inside a preview pane (Claude, Canvas, Drive) that blocks data requests, or a network filter blocks that host. Download the file and open it directly in your browser, or ask IT to allow <code>services.arcgis.com</code>.<br>
-      <small>Details: ${esc(err)}</small><br><button class="btn" id="btnRetry2">Try again</button> <button class="btn" id="btnBannerClose">Continue without data</button>`;
+  if (!ok){
+    const lines = [];
+    lines.push(dataOK.epa ? `EPA sites: request succeeded, ${epaSites.length} records in this area.` : `EPA sites: failed — ${esc(dataErr.epa)}`);
+    lines.push(dataOK.tract ? `Census tracts: request succeeded, ${tracts.length} records in this area.` : `Census tracts: failed — ${esc(dataErr.tract)}`);
+    banner.innerHTML = `<b>Live data problem.</b> The basemap works, but the data layers from <code>services.arcgis.com</code> did not come through as expected.<br><small>${lines.join('<br>')}<br>Query area: ${esc(bboxStr(b).split(',').map(Number).map(n => n.toFixed(3)).join(', '))}</small><br>
+      <button class="btn" id="btnRetry2">Try again</button> <button class="btn" id="btnDataTest">Test data connection</button> <button class="btn" id="btnBannerClose">Continue without data</button>`;
     banner.style.display = 'block';
     $('btnRetry2').addEventListener('click', () => { banner.style.display = 'none'; loadData(); });
+    $('btnDataTest').addEventListener('click', testData);
     $('btnBannerClose').addEventListener('click', () => banner.style.display = 'none');
   } else banner.style.display = 'none';
+}
+async function testData(){
+  const out = [];
+  const tests = [
+    ['EPA sites (fetch)', () => fetchJson(EPA_URL + '?' + new URLSearchParams({where:'1=1', outFields:'OBJECTID', returnGeometry:'false', resultRecordCount:'1', f:'json'}))],
+    ['EPA sites near downtown', () => fetchJson(EPA_URL + '?' + new URLSearchParams({where:'1=1', geometry:`${state.downtown.lng},${state.downtown.lat}`, geometryType:'esriGeometryPoint', inSR:'4326', distance:'20000', units:'esriSRUnit_Meter', spatialRel:'esriSpatialRelIntersects', returnCountOnly:'true', f:'json'}))],
+    ['Census tracts (fetch)', () => fetchJson(TRACT_URL + '?' + new URLSearchParams({where:'1=1', outFields:'GEOID', returnGeometry:'false', resultRecordCount:'1', f:'json'}))],
+    ['Census tract at downtown', () => fetchJson(TRACT_URL + '?' + new URLSearchParams({geometry:`${state.downtown.lng},${state.downtown.lat}`, geometryType:'esriGeometryPoint', inSR:'4326', spatialRel:'esriSpatialRelIntersects', outFields:'NAME,B17020_calc_pctPovE', returnGeometry:'false', f:'json'}))]
+  ];
+  for (const [label, fn] of tests){
+    try { const j = await fn(); const n = j.count != null ? j.count + ' records' : (j.features ? j.features.length + ' feature(s) ' + JSON.stringify(j.features[0] ? j.features[0].attributes : {}) : JSON.stringify(j).slice(0, 120)); out.push(`✔ ${label}: ${esc(n)}`); }
+    catch(e){ out.push(`✖ ${label}: ${esc(e.message || e)}`); }
+  }
+  out.push(`Browser: ${esc(navigator.userAgent.slice(0, 90))}`);
+  const b = $('dataBanner'); b.innerHTML = `<b>Data connection test</b><br><small>${out.join('<br>')}</small><br><button class="btn" id="btnBannerClose">Close</button>`;
+  $('btnBannerClose').addEventListener('click', () => b.style.display = 'none');
 }
 async function fetchJson(url){
   let r, fetchErr = null;
@@ -682,6 +702,7 @@ async function loadEPA(b, token){
     const p = new URLSearchParams({where:'1=1', geometry: bboxStr(b), geometryType:'esriGeometryEnvelope', inSR:'4326', spatialRel:'esriSpatialRelIntersects',
       outFields:'OBJECTID,PRIMARY_NAME,BF_PROPERTY_NAME,SF_SITE_NAME,RCRA_HANDLER_NAME,MAP_SYMBOL_CODE,LOCATION_ADDRESS,CITY_NAME,STATE_CODE,URL', outSR:'4326', f:'geojson', resultRecordCount:'2000'});
     const j = await fetchJson(EPA_URL + '?' + p);
+    console.log('EPA query', EPA_URL + '?' + p, j.features ? j.features.length + ' features' : j);
     if (token !== loadToken) return;
     if (!j.features) throw new Error('unexpected response (no features)');
     const seen = new Set(epaSites.map(s => s.id));
@@ -705,6 +726,7 @@ async function loadTracts(b, token){
       const p = new URLSearchParams({where:'1=1', geometry: bboxStr(b), geometryType:'esriGeometryEnvelope', inSR:'4326', spatialRel:'esriSpatialRelIntersects',
         outFields:'GEOID,NAME,County,State,B17020_calc_pctPovE,B17020_001E', outSR:'4326', f:'geojson', geometryPrecision:'5', resultRecordCount:'50', resultOffset:String(offset)});
       const j = await fetchJson(TRACT_URL + '?' + p);
+      console.log('Tract query page', page, j.features ? j.features.length + ' features' : j);
       if (token !== loadToken) return;
       if (!j.features) throw new Error('unexpected response (no features)');
       const fresh = j.features.filter(f => f.properties && !tractIds.has(f.properties.GEOID));
