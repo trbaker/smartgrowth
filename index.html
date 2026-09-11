@@ -442,6 +442,7 @@ function pointInFeature(pt, f){
   }
   return false;
 }
+const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 const fmtM = n => (n < 0 ? '−' : '') + '$' + Math.abs(n).toFixed(n % 1 ? 1 : 0) + 'M';
 const fmtN = n => n.toLocaleString('en-US');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -906,7 +907,6 @@ function tallies(){
   }
   return t;
 }
-const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 function scores(){
   const t = tallies();
   const housing = clamp(t.res / GOAL_RES * 100);
