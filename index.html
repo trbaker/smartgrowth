@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grow Smart — a smart growth planning game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root{
+    --ink:#14213D; --ink-2:#22345A; --fog:#E9EDEF; --paper:#FFFFFF; --line:#C9D1D6; --muted:#5B6B76;
+    --green:#2A7F62; --green-soft:#DDEFE7; --brick:#C8553D; --brick-soft:#F6E1DB;
+    --rust:#8A5A2B; --plum:#7A2E8E; --amber:#E0A526; --slate:#6B7C8A;
+    --shadow:0 10px 30px rgba(20,33,61,.18);
+    --radius:6px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font-family:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--fog);color:var(--ink);font-size:15px;line-height:1.45;overflow:hidden}
+  button{font:inherit;cursor:pointer}
+  a{color:var(--green)}
+  h1,h2,h3{margin:0;font-weight:700;line-height:1.15}
+  .num{font-family:"Barlow Condensed","Barlow",sans-serif;font-weight:600;letter-spacing:.01em}
+
+  /* ---------- Top bar ---------- */
+  .topbar{position:fixed;top:0;left:0;right:0;height:64px;background:var(--ink);color:#fff;display:flex;align-items:center;gap:20px;padding:0 18px;z-index:1200}
+  .brand{display:flex;flex-direction:column;line-height:1.05;min-width:150px}
+  .brand strong{font-size:22px;font-weight:700;letter-spacing:.02em}
+  .brand span{font-size:12px;color:#B8C2D0}
+  .stats{display:flex;gap:22px;flex:1;overflow-x:auto;scrollbar-width:none}
+  .stats::-webkit-scrollbar{display:none}
+  .stat{display:flex;flex-direction:column;min-width:86px;line-height:1.05}
+  .stat .num{font-size:24px;color:#fff}
+  .stat small{font-size:11px;color:#B8C2D0;white-space:nowrap}
+  .stat .bar{height:3px;background:#3A4A6C;border-radius:2px;margin-top:5px;overflow:hidden}
+  .stat .bar i{display:block;height:100%;background:var(--green);width:0;transition:width .35s}
+  .stat .bar.budget i{background:var(--amber)}
+  .top-actions{display:flex;gap:8px}
+  .btn{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:var(--radius);padding:8px 14px;font-weight:600;font-size:14px;transition:background .15s,border-color .15s}
+  .btn:hover{background:#F3F6F7}
+  .btn:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+  .btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+  .btn.primary:hover{background:#236B52}
+  .btn.ghost{background:transparent;color:#fff;border-color:#5B6C8F}
+  .btn.ghost:hover{background:#2A3C63}
+  .btn.danger{color:var(--brick);border-color:#E6B8AD}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+
+  /* ---------- Layout ---------- */
+  main{position:fixed;top:64px;left:0;right:0;bottom:0;display:flex}
+  .panel{width:330px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+  .panel-scroll{overflow-y:auto;flex:1;padding:14px 14px 8px}
+  .panel h2{font-size:15px;font-weight:700;margin:0 0 8px}
+  .panel .hint{font-size:13px;color:var(--muted);margin:0 0 10px}
+  #map{flex:1;background:#dfe6ea}
+  .leaflet-container{font-family:inherit}
+
+  /* Tools */
+  .tools{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+  .tool{display:grid;grid-template-columns:38px 1fr auto;gap:10px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:var(--radius);padding:8px 10px;transition:border-color .15s,background .15s}
+  .tool:hover{border-color:#9FB0BC}
+  .tool.active{border-color:var(--green);background:var(--green-soft);box-shadow:inset 0 0 0 1px var(--green)}
+  .tool .glyph{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-size:19px;background:var(--fog)}
+  .tool .t-name{font-weight:600;font-size:14px}
+  .tool .t-sub{font-size:12px;color:var(--muted)}
+  .tool .t-cost{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:20px;color:var(--ink)}
+  .tool .t-cost small{display:block;font:500 11px "Barlow",sans-serif;color:var(--muted);text-align:right}
+
+  /* Scores */
+  .scores{margin:0 0 14px}
+  .score{display:grid;grid-template-columns:110px 1fr 36px;gap:8px;align-items:center;font-size:13px;margin-bottom:5px}
+  .score .track{height:8px;background:var(--fog);border-radius:4px;overflow:hidden}
+  .score .track i{display:block;height:100%;background:var(--green);width:0;transition:width .35s}
+  .score .val{text-align:right;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:16px}
+  .score.equity .track i{background:var(--plum)}
+  .score.env .track i{background:var(--rust)}
+  .score.compact .track i{background:var(--amber)}
+  .total-line{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+  .total-line .num{font-size:30px}
+
+  /* Log */
+  .log{list-style:none;margin:0;padding:0;font-size:13px}
+  .log li{padding:7px 0;border-bottom:1px solid var(--fog)}
+  .log li .l-head{display:flex;justify-content:space-between;gap:8px;font-weight:600}
+  .log li .l-sub{color:var(--muted);font-size:12px}
+  .log .empty{color:var(--muted);padding:6px 0}
+  .tag{display:inline-block;font-size:11px;font-weight:600;border-radius:3px;padding:1px 6px;margin-right:4px;background:var(--fog);color:var(--ink)}
+  .tag.good{background:var(--green-soft);color:var(--green)}
+  .tag.bad{background:var(--brick-soft);color:var(--brick)}
+  .tag.brown{background:#EFE3D6;color:var(--rust)}
+  .tag.plum{background:#EFE0F3;color:var(--plum)}
+
+  .round-actions{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);background:var(--paper)}
+  .round-actions .btn{flex:1}
+
+  /* Data status */
+  .status{font-size:12px;color:var(--muted);padding:6px 14px;border-top:1px solid var(--fog);display:flex;gap:8px;align-items:center;min-height:30px}
+  .status .dot{width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none}
+  .status .dot.ok{background:var(--green)} .status .dot.bad{background:var(--brick)}
+
+  /* ---------- Map pins & legend ---------- */
+  .pin{width:34px;height:34px;border-radius:50%;background:var(--c,#333);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:grid;place-items:center;font-size:17px;line-height:1}
+  .pin.pending{opacity:.65;border-style:dashed}
+  .downtown{width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;border:3px solid #fff;display:grid;place-items:center;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  .legend{background:rgba(255,255,255,.95);padding:10px 12px;border-radius:var(--radius);box-shadow:0 1px 6px rgba(0,0,0,.25);font-size:12px;line-height:1.4;max-width:230px}
+  .legend h4{margin:0 0 4px;font-size:12px;font-weight:700}
+  .legend .row{display:flex;align-items:center;gap:7px}
+  .legend .sw{width:14px;height:14px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.15)}
+  .legend .sw.circle{border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+  .leaflet-popup-content{font-size:13px;line-height:1.4;margin:12px 14px}
+  .leaflet-popup-content h4{margin:0 0 4px;font-size:14px}
+  .leaflet-container.placing{cursor:crosshair}
+  .map-note{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:600;z-index:900;box-shadow:var(--shadow);display:none}
+  .map-wrap{position:relative;flex:1;display:flex}
+  .data-banner{position:absolute;left:12px;right:60px;bottom:12px;background:#fff;border-left:5px solid var(--brick);border-radius:6px;box-shadow:var(--shadow);padding:12px 14px;font-size:13.5px;z-index:950;display:none;max-width:560px}
+  .data-banner b{color:var(--brick)}
+  .data-banner code{font-size:12px;background:var(--fog);padding:1px 4px;border-radius:3px}
+  .data-banner .btn{margin-top:8px;padding:5px 10px;font-size:12.5px}
+
+  /* ---------- Modals ---------- */
+  .modal{position:fixed;inset:0;background:rgba(20,33,61,.55);display:none;align-items:center;justify-content:center;z-index:2000;padding:20px}
+  .modal.open{display:flex}
+  .card{background:var(--paper);border-radius:10px;box-shadow:var(--shadow);width:min(680px,100%);max-height:92vh;overflow:auto;padding:26px 28px}
+  .card.wide{width:min(860px,100%)}
+  .card h2{font-size:24px;margin-bottom:6px}
+  .card h3{font-size:16px;margin:16px 0 6px}
+  .card p{margin:0 0 10px}
+  .card .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+  .field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+  .field label{font-size:13px;font-weight:600}
+  .field input,.field select{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:var(--radius);background:#fff}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .goals{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+  .goal{background:var(--fog);border-radius:var(--radius);padding:10px 12px}
+  .goal .num{font-size:26px;line-height:1}
+  .goal small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+
+  /* Survey card */
+  .survey-grid{display:grid;grid-template-columns:1fr 250px;gap:18px}
+  .survey-grid img{width:100%;height:190px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--line);background:#cfd8dd}
+  .facts{list-style:none;padding:0;margin:0 0 10px;font-size:14px}
+  .facts li{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--fog)}
+  .facts li span:last-child{text-align:right;font-weight:600}
+  .stamp{display:inline-block;border:2px solid var(--rust);color:var(--rust);border-radius:4px;padding:2px 8px;font-weight:700;font-size:12px;letter-spacing:.04em;transform:rotate(-2deg)}
+  .stamp.plum{border-color:var(--plum);color:var(--plum)}
+  .stamp.green{border-color:var(--green);color:var(--green)}
+  .choice{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+  .choice label{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:var(--radius);padding:9px 11px;cursor:pointer}
+  .choice label:has(input:checked){border-color:var(--green);background:var(--green-soft)}
+  .choice input{margin-top:3px}
+  .cost-preview{background:var(--fog);border-radius:var(--radius);padding:10px 12px;font-size:14px;margin-top:8px}
+  .cost-preview b{font-family:"Barlow Condensed",sans-serif;font-size:22px;font-weight:700}
+  .warn{color:var(--brick);font-weight:600}
+
+  /* Event card */
+  .event-kicker{font-size:13px;color:var(--muted);margin-bottom:4px}
+  .event-body{font-size:15px}
+  .concept{background:var(--green-soft);border-left:4px solid var(--green);padding:10px 12px;border-radius:0 6px 6px 0;font-size:14px;margin:12px 0}
+  .concept b{color:var(--green)}
+  .event-choices{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+  .event-choices .btn{text-align:left;padding:11px 14px;font-weight:500}
+  .event-choices .btn strong{display:block;font-weight:700}
+
+  /* Field guide */
+  .guide dl{margin:0}
+  .guide dt{font-weight:700;margin-top:12px}
+  .guide dd{margin:2px 0 0;color:#2E3C48}
+  .guide ol{padding-left:20px;margin:6px 0}
+
+  /* Report */
+  .report{background:#fff;color:var(--ink);padding:26px 28px;border:1px solid var(--line);border-radius:8px}
+  .report-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:3px solid var(--ink);padding-bottom:12px;margin-bottom:14px}
+  .report-head h2{font-size:26px}
+  .report-head .who{font-size:14px;color:var(--muted)}
+  .grade{width:82px;height:82px;border-radius:50%;border:4px solid var(--green);display:grid;place-items:center;font-family:"Barlow Condensed",sans-serif;font-size:44px;font-weight:700;color:var(--green);flex:none}
+  .grade.mid{border-color:var(--amber);color:#9A6E0E}
+  .grade.low{border-color:var(--brick);color:var(--brick)}
+  .r-scores{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0 14px}
+  .r-score{background:var(--fog);border-radius:6px;padding:8px 10px}
+  .r-score .num{font-size:26px;line-height:1}
+  .r-score small{display:block;font-size:11px;color:var(--muted)}
+  .r-score em{display:block;font-style:normal;font-size:11px;color:var(--muted);margin-top:2px}
+  .r-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  .r-table th,.r-table td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--fog);vertical-align:top}
+  .r-table th{font-weight:700;background:var(--fog)}
+  .r-foot{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);margin-top:14px;padding-top:8px;flex-wrap:wrap}
+  .r-foot code{font-family:"Barlow Condensed",monospace;font-size:14px;color:var(--ink);letter-spacing:.06em}
+  .report-summary{font-size:14px;margin:8px 0 4px}
+  .report-summary li{margin:3px 0}
+  .snapshot{margin-top:12px}
+  .snapshot img{width:100%;border:1px solid var(--line);border-radius:6px}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:24px;font-size:14px;z-index:3000;display:none;box-shadow:var(--shadow)}
+
+  @media (max-width:820px){
+    .topbar{height:auto;flex-wrap:wrap;padding:8px 12px;gap:10px}
+    main{top:0;padding-top:96px;flex-direction:column}
+    .panel{width:100%;max-height:44vh;border-right:0;border-top:1px solid var(--line);order:2}
+    .map-wrap{order:1;min-height:40vh}
+    .survey-grid{grid-template-columns:1fr}
+    .r-scores{grid-template-columns:repeat(2,1fr)}
+    .goals{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  @media print{
+    body{overflow:visible;background:#fff}
+    .topbar,main,.toast{display:none!important}
+    .modal{position:static;display:block!important;background:none;padding:0}
+    .modal:not(#reportModal){display:none!important}
+    .card{box-shadow:none;max-height:none;width:auto;padding:0}
+    .card .actions,.no-print{display:none!important}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><strong>Grow Smart</strong><span>a smart growth planning game</span></div>
+  <div class="stats">
+    <div class="stat"><span class="num" id="sRound">—</span><small>round of 5</small></div>
+    <div class="stat"><span class="num" id="sBudget">—</span><small>budget left</small><div class="bar budget"><i id="bBudget"></i></div></div>
+    <div class="stat"><span class="num" id="sRes">0</span><small>of 10,000 residents housed</small><div class="bar"><i id="bRes"></i></div></div>
+    <div class="stat"><span class="num" id="sJobs">0</span><small>of 3,000 jobs</small><div class="bar"><i id="bJobs"></i></div></div>
+    <div class="stat"><span class="num" id="sGreen">0</span><small>greenfield acres used</small></div>
+    <div class="stat"><span class="num" id="sBrown">0</span><small>brownfields reused</small></div>
+  </div>
+  <div class="top-actions">
+    <button class="btn ghost" id="btnGuide">Field guide</button>
+    <button class="btn ghost" id="btnFinish">Finish &amp; report</button>
+  </div>
+</header>
+
+<main>
+  <aside class="panel">
+    <div class="panel-scroll">
+      <h2>Build a project</h2>
+      <p class="hint">Pick a project, then click a site on the map. You can place up to <b>3 projects per round</b>.</p>
+      <div class="tools" id="tools"></div>
+
+      <h2>Smart growth scorecard</h2>
+      <div class="scores" id="scores"></div>
+
+      <h2>Decision log</h2>
+      <ul class="log" id="log"><li class="empty">Nothing built yet.</li></ul>
+    </div>
+    <div class="status"><span class="dot" id="dataDot"></span><span id="dataStatus" style="flex:1">Waiting to start</span><button class="btn" id="btnRetry" style="display:none;padding:4px 9px;font-size:12px">Retry</button></div>
+    <div class="round-actions">
+      <button class="btn" id="btnUndo" disabled>Undo last</button>
+      <button class="btn primary" id="btnEndRound" disabled>End round</button>
+    </div>
+  </aside>
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="map-note" id="mapNote"></div>
+    <div class="data-banner" id="dataBanner"></div>
+  </div>
+</main>
+
+<!-- Setup -->
+<div class="modal open" id="setupModal">
+  <div class="card">
+    <h2>Grow Smart</h2>
+    <p>You are the new planning director. Over five rounds, house <b>10,000 new residents</b> and create <b>3,000 jobs</b> without paving over the countryside, and without pushing pollution onto the neighborhoods least able to fight it. The map shows real EPA contaminated-site records and real Census poverty rates, so every site you choose has a real story.</p>
+    <div class="goals">
+      <div class="goal"><span class="num">$170M</span><small>starting budget</small></div>
+      <div class="goal"><span class="num">10,000</span><small>residents to house</small></div>
+      <div class="goal"><span class="num">3,000</span><small>jobs to create</small></div>
+    </div>
+    <div class="two">
+      <div class="field"><label for="inName">Your name (optional)</label><input id="inName" placeholder="First and last name" autocomplete="name"></div>
+      <div class="field"><label for="inClass">Class or period</label><input id="inClass" placeholder="e.g., APHG 3rd hour"></div>
+    </div>
+    <div class="field"><label for="inCity">Planning area</label>
+      <select id="inCity"></select>
+    </div>
+    <p class="hint" style="font-size:13px;color:var(--muted)">You can pan anywhere once the map opens and use <i>Set downtown here</i> in the layer menu to play in another city.</p>
+    <div class="actions"><button class="btn primary" id="btnStart">Start planning</button></div>
+  </div>
+</div>
+
+<!-- Site survey -->
+<div class="modal" id="surveyModal">
+  <div class="card wide">
+    <h2 id="svTitle">Site survey</h2>
+    <p class="hint" id="svSub"></p>
+    <div class="survey-grid">
+      <div>
+        <ul class="facts" id="svFacts"></ul>
+        <div id="svStamps"></div>
+        <h3>What does the imagery show at this site?</h3>
+        <p class="hint" style="margin-top:-2px">Look at the satellite view. Smart growth prefers land that is already developed over open land at the edge of the city.</p>
+        <div class="choice" id="svLand">
+          <label><input type="radio" name="land" value="developed"><span><b>Already developed.</b> Buildings, pavement, parking lots, vacant lots or industrial land. This is infill.</span></label>
+          <label><input type="radio" name="land" value="undeveloped"><span><b>Undeveloped.</b> Farmland, pasture, forest or other open land. This is greenfield.</span></label>
+          <label><input type="radio" name="land" value="water"><span><b>Water or floodway.</b> Not buildable.</span></label>
+        </div>
+        <div class="cost-preview" id="svCost"></div>
+      </div>
+      <div>
+        <img id="svImg" alt="Satellite imagery of the selected site">
+        <p class="hint" style="margin-top:6px">Esri World Imagery at the selected site (about 1 km across).</p>
+      </div>
+    </div>
+    <div class="actions"><button class="btn" id="svCancel">Cancel</button><button class="btn primary" id="svConfirm" disabled>Build here</button></div>
+  </div>
+</div>
+
+<!-- Event -->
+<div class="modal" id="eventModal">
+  <div class="card">
+    <div class="event-kicker" id="evKicker">End of round</div>
+    <h2 id="evTitle"></h2>
+    <div class="event-body" id="evBody"></div>
+    <div class="concept" id="evConcept"></div>
+    <div class="event-choices" id="evChoices"></div>
+  </div>
+</div>
+
+<!-- Field guide -->
+<div class="modal" id="guideModal">
+  <div class="card wide guide">
+    <h2>Field guide</h2>
+    <p>The ideas this game is built on, in the language you will see on the AP Human Geography exam.</p>
+    <dl>
+      <dt>Smart growth</dt><dd>A planning approach that concentrates growth in compact, walkable, transit-served centers instead of spreading it across the countryside. Its core principles: mix land uses, build compactly, create a range of housing choices, make walkable neighborhoods, preserve open space and farmland, direct development toward existing communities, provide transportation choices, and involve residents in decisions.</dd>
+      <dt>Urban sprawl</dt><dd>Low-density, car-dependent development that spreads outward from a city. It consumes farmland and habitat, lengthens commutes (higher vehicle miles traveled), and forces governments to extend roads, water and sewer lines far beyond where they already exist.</dd>
+      <dt>Greenfield</dt><dd>Land that has never been built on: farms, pastures, forests. Cheap and easy to build on, which is exactly why sprawl favors it.</dd>
+      <dt>Brownfield</dt><dd>Previously developed land, usually industrial or commercial, that is abandoned or underused and may be contaminated. Reusing it costs more up front (assessment and cleanup) but recycles land, reuses existing streets and pipes, and removes a hazard from a neighborhood. The orange and purple dots on the map are real sites from EPA's Cleanups in My Community database.</dd>
+      <dt>Superfund site</dt><dd>The most seriously contaminated sites in the country, managed under the federal Superfund program. Sites on the National Priorities List (NPL) require long, expensive cleanup before reuse.</dd>
+      <dt>Infill development</dt><dd>Building on vacant or underused parcels inside an already built-up area. The opposite of building at the edge.</dd>
+      <dt>Greyfield</dt><dd>An economically obsolete but not contaminated site, such as a dead shopping mall with its ocean of parking. A prime infill target.</dd>
+      <dt>Mixed-use and "missing middle" housing</dt><dd>Mixed-use buildings put shops, offices and homes in the same structure or block. Missing middle housing (duplexes, townhomes, small apartment buildings) sits between single-family houses and big apartment towers and lets neighborhoods add people gently.</dd>
+      <dt>Transit-oriented development (TOD)</dt><dd>Dense, walkable, mixed-use development within about a half mile (800 m) of a rail or bus rapid transit station. In the game, housing near a station you build earns a compact-growth bonus.</dd>
+      <dt>Environmental justice</dt><dd>The principle that no group of people should bear a disproportionate share of environmental harms, and that all people deserve meaningful participation in decisions. Historically, polluting facilities and highways were disproportionately sited in low-income communities and communities of color, often the same neighborhoods redlined decades earlier. The shaded tracts on the map show real poverty rates from the American Community Survey; the game treats tracts at or above 20% as high-need.</dd>
+      <dt>LULU</dt><dd>A "locally unwanted land use": something a region needs but no neighborhood wants nearby, such as a logistics warehouse, a landfill or a highway. Where LULUs end up is an environmental justice question.</dd>
+      <dt>NIMBY</dt><dd>"Not in my backyard": opposition by residents to development near them, whether a warehouse or an apartment building. Wealthier neighborhoods are usually better at winning these fights.</dd>
+      <dt>Food desert</dt><dd>An area, typically low-income, where residents lack easy access to a full-service grocery store. Placing a grocery in a high-need tract earns an equity bonus.</dd>
+      <dt>Gentrification and displacement</dt><dd>When new investment in a lower-income neighborhood raises rents and property values, long-time residents can be priced out. Affordable-housing requirements are one tool cities use in response.</dd>
+    </dl>
+    <h3>How the game classifies a site</h3>
+    <p>Distance to downtown comes from the downtown pin (3 km and 10 km rings). A site within 300 m of an EPA record counts as a brownfield and adds cleanup cost. The poverty rate comes from the Census tract you clicked in. Whether land is developed is your call from the imagery, so look carefully.</p>
+    <div class="actions"><button class="btn primary" id="guideClose">Back to the map</button></div>
+  </div>
+</div>
+
+<!-- Report -->
+<div class="modal" id="reportModal">
+  <div class="card wide">
+    <div class="report" id="reportCard"></div>
+    <p class="hint no-print" style="margin-top:12px">To document your work: use <b>Save report as image</b>, or take a screenshot of this card and of your map. The verification code changes if the log changes.</p>
+    <div class="actions no-print">
+      <button class="btn" id="btnReportClose">Back to map</button>
+      <button class="btn" id="btnMapSnap">Add map snapshot</button>
+      <button class="btn" id="btnCsv">Download log (CSV)</button>
+      <button class="btn" id="btnPrint">Print / save PDF</button>
+      <button class="btn primary" id="btnPng">Save report as image</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   Data sources (live, public, no API key)
+   ========================================================= */
+const EPA_URL   = 'https://services.arcgis.com/cJ9YHowT8TU7DUyn/ArcGIS/rest/services/Cleanups/FeatureServer/0/query';
+const TRACT_URL = 'https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/ACS_Poverty_by_Age_Boundaries/FeatureServer/2/query';
+const TILE = {
+  imagery: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  labels:  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+  streets: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  topo:    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+  gray:    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+};
+const ESRI_ATTR = 'Tiles &copy; Esri';
+
+const CITIES = [
+  ['Kansas City, MO', 39.0997, -94.5786], ['St. Louis, MO', 38.6270, -90.1994], ['Wichita, KS', 37.6872, -97.3301],
+  ['Omaha, NE', 41.2565, -95.9345], ['Minneapolis, MN', 44.9778, -93.2650], ['Chicago, IL', 41.8781, -87.6298],
+  ['Detroit, MI', 42.3314, -83.0458], ['Cleveland, OH', 41.4993, -81.6944], ['Pittsburgh, PA', 40.4406, -79.9959],
+  ['Baltimore, MD', 39.2904, -76.6122], ['Richmond, VA', 37.5407, -77.4360], ['Philadelphia, PA', 39.9526, -75.1652], ['Atlanta, GA', 33.7490, -84.3880],
+  ['Birmingham, AL', 33.5186, -86.8104], ['Houston, TX', 29.7604, -95.3698], ['Denver, CO', 39.7392, -104.9903],
+  ['Los Angeles, CA', 34.0522, -118.2437], ['Seattle, WA', 47.6062, -122.3321]
+];
+
+/* =========================================================
+   Game rules
+   ========================================================= */
+const GOAL_RES = 10000, GOAL_JOBS = 3000, START_BUDGET = 170, ROUNDS = 5, PER_ROUND = 3;
+const HIGH_NEED = 20;         // poverty rate (%) at or above which a tract is "high-need"
+const BROWN_RADIUS = 0.3;     // km to an EPA record to count as a brownfield site
+const TOD_RADIUS = 0.8;       // km to a transit station
+const CORE_KM = 3, EDGE_KM = 10;
+
+const PROJECTS = {
+  mixed:     {name:'Mixed-use apartments', sub:'Homes over shops, 5 stories, walkable', cost:16, res:1200, jobs:150, acres:8,  glyph:'🏢', color:'#2A7F62', housing:true},
+  town:      {name:'Townhomes', sub:'"Missing middle" housing', cost:10, res:600, jobs:20, acres:15, glyph:'🏘️', color:'#3E8E7E', housing:true},
+  subdiv:    {name:'Single-family subdivision', sub:'Large lots, cul-de-sacs, car-dependent', cost:12, res:900, jobs:0, acres:120, glyph:'🏡', color:'#E0A526', housing:true},
+  transit:   {name:'Transit station', sub:'Bus rapid transit or light rail stop', cost:8, res:0, jobs:30, acres:2, glyph:'🚉', color:'#1F6FB2'},
+  park:      {name:'Park & greenway', sub:'Open space, trails, stormwater', cost:4, res:0, jobs:10, acres:20, glyph:'🌳', color:'#5B8C2A'},
+  grocery:   {name:'Grocery store', sub:'Full-service, fresh food', cost:6, res:0, jobs:80, acres:6, glyph:'🛒', color:'#B5651D'},
+  warehouse: {name:'Logistics warehouse', sub:'Jobs, but hundreds of trucks a day', cost:9, res:0, jobs:400, acres:40, glyph:'🚚', color:'#6B7C8A', lulu:true}
+};
+
+const state = {
+  name:'', klass:'', city:'', downtown:null, round:1, budget:START_BUDGET,
+  placements:[], roundPlacements:[], events:[], modifiers:{costMult:1, infillDiscount:0, transitHalf:false},
+  finished:false, startedAt:null, once:{}
+};
+
+let map, base = {}, overlays = {}, epaLayer, tractLayer, placedLayer, ringsLayer, downtownMarker, layerControl;
+let epaSites = [], tracts = [], tractIds = new Set(), activeTool = null, pending = null, eventQueue = [], dataOK = {epa:null, tract:null}, dataErr = {epa:'', tract:''};
+
+/* =========================================================
+   Geometry helpers
+   ========================================================= */
+function kmBetween(a, b){
+  const R = 6371, dLat = (b.lat - a.lat) * Math.PI/180, dLng = (b.lng - a.lng) * Math.PI/180;
+  const s = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function pointInRing(pt, ring){
+  let inside = false;
+  for (let i = 0, j = ring.length-1; i < ring.length; j = i++){
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > pt.lat) !== (yj > pt.lat)) && (pt.lng < (xj - xi) * (pt.lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function pointInFeature(pt, f){
+  const g = f.geometry; if (!g) return false;
+  const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+  for (const poly of polys){
+    if (pointInRing(pt, poly[0])){
+      let hole = false;
+      for (let k = 1; k < poly.length; k++) if (pointInRing(pt, poly[k])) hole = true;
+      if (!hole) return true;
+    }
+  }
+  return false;
+}
+const fmtM = n => (n < 0 ? '−' : '') + '$' + Math.abs(n).toFixed(n % 1 ? 1 : 0) + 'M';
+const fmtN = n => n.toLocaleString('en-US');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* =========================================================
+   EPA site helpers
+   ========================================================= */
+function siteKind(code){
+  code = code || '';
+  if (code.includes('S')) return code === 'SN' || code.includes('SN') ? 'Superfund site (non-NPL)' : 'Superfund site (NPL)';
+  if (code.includes('B')) return 'Brownfield property';
+  if (code.includes('R')) return 'RCRA corrective action site';
+  if (code === 'INS') return 'Incident of national significance';
+  if (code.includes('E')) return 'Emergency response site';
+  if (code.includes('F')) return 'Federal facility';
+  return 'EPA cleanup site';
+}
+function siteColor(code){
+  code = code || '';
+  if (code.includes('S')) return '#7A2E8E';
+  if (code.includes('B')) return '#C8553D';
+  if (code.includes('R')) return '#8A5A2B';
+  return '#6B7C8A';
+}
+function cleanupCost(code){
+  code = code || '';
+  if (code.includes('S')) return code.includes('SN') ? 8 : 10;
+  if (code.includes('R')) return 6;
+  if (code.includes('B')) return 3;
+  return 4;
+}
+function siteName(p){ return p.BF_PROPERTY_NAME || p.SF_SITE_NAME || p.RCRA_HANDLER_NAME || p.PRIMARY_NAME || 'Unnamed site'; }
+
+/* =========================================================
+   Setup
+   ========================================================= */
+const $ = id => document.getElementById(id);
+function toast(msg, ms = 2600){ const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._t); t._t = setTimeout(() => t.style.display = 'none', ms); }
+
+(function initSetup(){
+  const sel = $('inCity');
+  CITIES.forEach((c, i) => { const o = document.createElement('option'); o.value = i; o.textContent = c[0]; sel.appendChild(o); });
+  $('btnStart').addEventListener('click', () => {
+    state.name = $('inName').value.trim() || 'Anonymous planner';
+    state.klass = $('inClass').value.trim();
+    const c = CITIES[+sel.value];
+    state.city = c[0]; state.downtown = {lat:c[1], lng:c[2]}; state.startedAt = new Date();
+    $('setupModal').classList.remove('open');
+    startGame();
+  });
+  $('btnGuide').addEventListener('click', () => $('guideModal').classList.add('open'));
+  $('guideClose').addEventListener('click', () => $('guideModal').classList.remove('open'));
+  $('btnFinish').addEventListener('click', () => { if (!state.downtown) return; if (state.finished || confirm('Finish now and generate your report? You can still come back to the map afterward, but the game will be scored as it stands.')) finish(); });
+  $('btnReportClose').addEventListener('click', () => $('reportModal').classList.remove('open'));
+  $('btnUndo').addEventListener('click', undoLast);
+  $('btnEndRound').addEventListener('click', endRound);
+  $('svCancel').addEventListener('click', cancelSurvey);
+  $('svConfirm').addEventListener('click', confirmSurvey);
+  $('svLand').addEventListener('change', updateSurveyCost);
+  $('btnPng').addEventListener('click', saveReportPng);
+  $('btnCsv').addEventListener('click', downloadCsv);
+  $('btnPrint').addEventListener('click', () => window.print());
+  $('btnMapSnap').addEventListener('click', addMapSnapshot);
+  $('btnRetry').addEventListener('click', () => map && loadData());
+  renderTools(); renderScores(); renderStats();
+})();
+
+function renderTools(){
+  const wrap = $('tools'); wrap.innerHTML = '';
+  Object.entries(PROJECTS).forEach(([key, p]) => {
+    const b = document.createElement('button'); b.className = 'tool'; b.dataset.key = key;
+    const meta = [p.res ? fmtN(p.res) + ' residents' : null, p.jobs ? fmtN(p.jobs) + ' jobs' : null, p.acres + ' acres'].filter(Boolean).join(' · ');
+    b.innerHTML = `<span class="glyph" style="background:${p.color}22">${p.glyph}</span><span><span class="t-name">${p.name}</span><br><span class="t-sub">${p.sub}</span><br><span class="t-sub">${meta}</span></span><span class="t-cost">${fmtM(p.cost)}<small>base cost</small></span>`;
+    b.addEventListener('click', () => selectTool(key));
+    wrap.appendChild(b);
+  });
+}
+function selectTool(key){
+  if (state.finished) return toast('The game is finished. Start a new game by reloading the page.');
+  if (state.roundPlacements.length >= PER_ROUND){ toast(`You have placed ${PER_ROUND} projects this round. End the round to continue.`); return; }
+  activeTool = activeTool === key ? null : key;
+  document.querySelectorAll('.tool').forEach(t => t.classList.toggle('active', t.dataset.key === activeTool));
+  const note = $('mapNote');
+  if (activeTool){ note.textContent = `Click the map to place: ${PROJECTS[activeTool].name}`; note.style.display = 'block'; map && map.getContainer().classList.add('placing'); }
+  else { note.style.display = 'none'; map && map.getContainer().classList.remove('placing'); }
+}
+
+/* =========================================================
+   Map
+   ========================================================= */
+function startGame(){
+  map = L.map('map', {zoomControl:true, minZoom:8, maxZoom:19}).setView([state.downtown.lat, state.downtown.lng], 11);
+  base.streets = L.tileLayer(TILE.streets, {attribution: ESRI_ATTR, maxNativeZoom:19});
+  base.imagery = L.layerGroup([L.tileLayer(TILE.imagery, {attribution: ESRI_ATTR, maxNativeZoom:19}), L.tileLayer(TILE.labels, {maxNativeZoom:19})]);
+  base.topo = L.tileLayer(TILE.topo, {attribution: ESRI_ATTR, maxNativeZoom:19});
+  base.gray = L.tileLayer(TILE.gray, {attribution: ESRI_ATTR, maxNativeZoom:16});
+  base.streets.addTo(map);
+
+  tractLayer = L.geoJSON(null, {style: tractStyle, onEachFeature: (f, l) => l.on('click', () => { if (!activeTool) l.bindPopup(tractPopup(f)).openPopup(); })}).addTo(map);
+  epaLayer = L.layerGroup().addTo(map);
+  ringsLayer = L.layerGroup().addTo(map);
+  placedLayer = L.layerGroup().addTo(map);
+
+  layerControl = L.control.layers(
+    {'Streets (Esri)': base.streets, 'Imagery (Esri)': base.imagery, 'Topographic (Esri)': base.topo, 'Light gray (Esri)': base.gray},
+    {'Poverty rate by Census tract (ACS)': tractLayer, 'EPA cleanup sites': epaLayer, 'Downtown rings (3 km, 10 km)': ringsLayer, 'Your projects': placedLayer},
+    {collapsed: window.innerWidth < 900}).addTo(map);
+
+  // Extra control: legend + set-downtown
+  const legend = L.control({position:'bottomleft'});
+  legend.onAdd = () => {
+    const d = L.DomUtil.create('div', 'legend');
+    d.innerHTML = `<h4>Poverty rate by tract</h4>
+      <div class="row"><span class="sw" style="background:#FFF6D5"></span>under 7%</div>
+      <div class="row"><span class="sw" style="background:#F2C9A0"></span>7 – 12%</div>
+      <div class="row"><span class="sw" style="background:#E38F6E"></span>12 – 20%</div>
+      <div class="row"><span class="sw" style="background:#C25D57"></span>20 – 30% (high-need)</div>
+      <div class="row"><span class="sw" style="background:#7B2D4A"></span>30% and up (high-need)</div>
+      <h4 style="margin-top:8px">EPA cleanup sites</h4>
+      <div class="row"><span class="sw circle" style="background:#C8553D"></span>Brownfield property</div>
+      <div class="row"><span class="sw circle" style="background:#7A2E8E"></span>Superfund site</div>
+      <div class="row"><span class="sw circle" style="background:#8A5A2B"></span>RCRA corrective action</div>
+      <div class="row"><span class="sw circle" style="background:#6B7C8A"></span>Other EPA record</div>
+      <button class="btn" style="margin-top:8px;width:100%;padding:6px 8px;font-size:12px" id="btnSetDowntown">Set downtown here (map center)</button>`;
+    L.DomEvent.disableClickPropagation(d);
+    return d;
+  };
+  legend.addTo(map);
+  $('btnSetDowntown').addEventListener('click', () => {
+    const c = map.getCenter(); state.downtown = {lat:c.lat, lng:c.lng}; state.city = 'Custom area (' + c.lat.toFixed(3) + ', ' + c.lng.toFixed(3) + ')';
+    drawDowntown(); loadData(); toast('Downtown moved. Loading data for this area…');
+  });
+
+  drawDowntown();
+  map.on('click', onMapClick);
+  map.on('moveend', maybeLoadMore);
+  $('btnEndRound').disabled = false;
+  renderStats();
+  loadData();
+  toast('Pick a project on the left, then click a site on the map.', 4000);
+}
+
+function drawDowntown(){
+  ringsLayer.clearLayers();
+  const c = [state.downtown.lat, state.downtown.lng];
+  L.circle(c, {radius: CORE_KM*1000, color:'#14213D', weight:1.5, dashArray:'6 6', fill:false}).addTo(ringsLayer);
+  L.circle(c, {radius: EDGE_KM*1000, color:'#14213D', weight:1.5, dashArray:'6 6', fill:false}).addTo(ringsLayer);
+  L.marker(c, {icon: L.divIcon({className:'', html:'<div class="downtown">★</div>', iconSize:[30,30], iconAnchor:[15,15]}), interactive:false}).addTo(ringsLayer);
+}
+
+function tractStyle(f){
+  const v = f.properties.B17020_calc_pctPovE;
+  const col = v == null ? '#cccccc' : v < 7 ? '#FFF6D5' : v < 12 ? '#F2C9A0' : v < 20 ? '#E38F6E' : v < 30 ? '#C25D57' : '#7B2D4A';
+  return {color:'#ffffff', weight:.6, fillColor: col, fillOpacity: .45};
+}
+function tractPopup(f){
+  const p = f.properties, v = p.B17020_calc_pctPovE;
+  return `<h4>${esc(p.NAME)}</h4>${esc(p.County)}, ${esc(p.State)}<br>Poverty rate: <b>${v == null ? 'no data' : v.toFixed(1) + '%'}</b>${v >= HIGH_NEED ? ' <span class="tag bad">high-need</span>' : ''}<br><small>ACS 5-year estimate, pop. ${fmtN(p.B17020_001E || 0)}</small>`;
+}
+
+/* ---------- Live data ---------- */
+let loadToken = 0;
+async function loadData(){
+  const token = ++loadToken;
+  const b = map.getBounds().pad(0.15); lastLoadedBounds = b;
+  setStatus('loading', 'Loading EPA cleanup sites and Census tracts…');
+  await Promise.all([loadEPA(b, token), loadTracts(b, token)]);
+  if (token !== loadToken) return;
+  const parts = [];
+  parts.push(dataOK.epa ? `${epaSites.length} EPA sites loaded` : 'EPA sites failed');
+  parts.push(dataOK.tract ? `${tracts.length} Census tracts loaded` : 'Census tracts failed');
+  const ok = dataOK.epa && dataOK.tract;
+  setStatus(ok ? 'ok' : 'bad', parts.join(' · '));
+  $('btnRetry').style.display = ok ? 'none' : 'inline-block';
+  const banner = $('dataBanner');
+  if (!dataOK.epa && !dataOK.tract){
+    const err = dataErr.epa || dataErr.tract;
+    banner.innerHTML = `<b>Live data did not load.</b> The basemap works, but requests to <code>services.arcgis.com</code> for EPA sites and Census tracts failed.<br>
+      This usually means the page is open inside a preview pane (Claude, Canvas, Drive) that blocks data requests, or a network filter blocks that host. Download the file and open it directly in your browser, or ask IT to allow <code>services.arcgis.com</code>.<br>
+      <small>Details: ${esc(err)}</small><br><button class="btn" id="btnRetry2">Try again</button> <button class="btn" id="btnBannerClose">Continue without data</button>`;
+    banner.style.display = 'block';
+    $('btnRetry2').addEventListener('click', () => { banner.style.display = 'none'; loadData(); });
+    $('btnBannerClose').addEventListener('click', () => banner.style.display = 'none');
+  } else banner.style.display = 'none';
+}
+async function fetchJson(url){
+  let r;
+  try { r = await fetch(url, {mode:'cors', credentials:'omit'}); }
+  catch(e){ throw new Error('network/CORS error (' + (e.message || e) + ')'); }
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  if (j.error) throw new Error('service error ' + (j.error.code || '') + ' ' + (j.error.message || ''));
+  return j;
+}
+function setStatus(kind, text){ $('dataStatus').textContent = text; $('dataDot').className = 'dot ' + (kind === 'ok' ? 'ok' : kind === 'bad' ? 'bad' : ''); }
+const bboxStr = b => `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
+
+async function loadEPA(b, token){
+  try{
+    const p = new URLSearchParams({where:'1=1', geometry: bboxStr(b), geometryType:'esriGeometryEnvelope', inSR:'4326', spatialRel:'esriSpatialRelIntersects',
+      outFields:'OBJECTID,PRIMARY_NAME,BF_PROPERTY_NAME,SF_SITE_NAME,RCRA_HANDLER_NAME,MAP_SYMBOL_CODE,LOCATION_ADDRESS,CITY_NAME,STATE_CODE,URL', outSR:'4326', f:'geojson', resultRecordCount:'2000'});
+    const j = await fetchJson(EPA_URL + '?' + p);
+    if (token !== loadToken) return;
+    if (!j.features) throw new Error('unexpected response (no features)');
+    const seen = new Set(epaSites.map(s => s.id));
+    j.features.forEach(f => {
+      if (!f.geometry || seen.has(f.properties.OBJECTID)) return;
+      const [lng, lat] = f.geometry.coordinates, pr = f.properties;
+      const site = {id: pr.OBJECTID, lat, lng, code: pr.MAP_SYMBOL_CODE, name: siteName(pr), kind: siteKind(pr.MAP_SYMBOL_CODE), addr: [pr.LOCATION_ADDRESS, pr.CITY_NAME, pr.STATE_CODE].filter(Boolean).join(', '), url: pr.URL};
+      epaSites.push(site);
+      L.circleMarker([lat, lng], {radius:6, color:'#fff', weight:1.5, fillColor: siteColor(site.code), fillOpacity:.95})
+        .bindPopup(`<h4>${esc(site.name)}</h4><span class="tag" style="background:${siteColor(site.code)};color:#fff">${esc(site.kind)}</span><br>${esc(site.addr)}<br><small>Source: EPA Cleanups in My Community${site.url ? ` · <a href="${esc(site.url)}" target="_blank" rel="noopener">site profile</a>` : ''}</small>`)
+        .addTo(epaLayer);
+    });
+    dataOK.epa = true;
+  }catch(e){ console.error('EPA load failed', e); dataOK.epa = false; dataErr.epa = e.message || String(e); }
+}
+
+async function loadTracts(b, token){
+  try{
+    let offset = 0;
+    for (let page = 0; page < 20; page++){
+      const p = new URLSearchParams({where:'1=1', geometry: bboxStr(b), geometryType:'esriGeometryEnvelope', inSR:'4326', spatialRel:'esriSpatialRelIntersects',
+        outFields:'GEOID,NAME,County,State,B17020_calc_pctPovE,B17020_001E', outSR:'4326', f:'geojson', geometryPrecision:'5', resultRecordCount:'50', resultOffset:String(offset)});
+      const j = await fetchJson(TRACT_URL + '?' + p);
+      if (token !== loadToken) return;
+      if (!j.features) throw new Error('unexpected response (no features)');
+      const fresh = j.features.filter(f => f.properties && !tractIds.has(f.properties.GEOID));
+      fresh.forEach(f => tractIds.add(f.properties.GEOID));
+      tracts.push(...fresh);
+      tractLayer.addData({type:'FeatureCollection', features: fresh});
+      offset += j.features.length;
+      setStatus('loading', `Loading Census tracts… ${tracts.length} so far`);
+      const more = (j.properties && j.properties.exceededTransferLimit) || j.exceededTransferLimit;
+      if (!more || j.features.length === 0) break;
+    }
+    dataOK.tract = true;
+  }catch(e){ console.error('Tract load failed', e); dataOK.tract = false; dataErr.tract = e.message || String(e); }
+}
+let lastLoadedBounds = null;
+function maybeLoadMore(){
+  // Reload when the viewport leaves the area already loaded
+  const b = map.getBounds();
+  if (!lastLoadedBounds){ lastLoadedBounds = b.pad(0.15); return; }
+  if (!lastLoadedBounds.contains(b) && map.getZoom() >= 10){ lastLoadedBounds = b.pad(0.15); loadData(); }
+}
+
+async function tractAt(latlng){
+  for (const f of tracts) if (pointInFeature(latlng, f)) return f.properties;
+  try{
+    const p = new URLSearchParams({geometry:`${latlng.lng},${latlng.lat}`, geometryType:'esriGeometryPoint', inSR:'4326', spatialRel:'esriSpatialRelIntersects',
+      outFields:'GEOID,NAME,County,State,B17020_calc_pctPovE,B17020_001E', returnGeometry:'false', f:'json'});
+    const r = await fetch(TRACT_URL + '?' + p); const j = await r.json();
+    if (j.features && j.features[0]) return j.features[0].attributes;
+  }catch(e){ console.error(e); }
+  return null;
+}
+
+/* =========================================================
+   Placement + site survey
+   ========================================================= */
+function onMapClick(e){
+  if (!activeTool) return;
+  openSurvey(e.latlng, activeTool);
+}
+
+async function openSurvey(latlng, key){
+  const p = PROJECTS[key];
+  const distKm = kmBetween(latlng, state.downtown);
+  let nearest = null, nd = Infinity;
+  for (const s of epaSites){ const d = kmBetween(latlng, s); if (d < nd){ nd = d; nearest = s; } }
+  const brown = nearest && nd <= BROWN_RADIUS ? nearest : null;
+  let nearTransit = null, td = Infinity;
+  for (const pl of state.placements){ if (pl.key !== 'transit') continue; const d = kmBetween(latlng, pl.latlng); if (d < td){ td = d; nearTransit = pl; } }
+  let nearHousing = Infinity, nearWarehouse = Infinity;
+  for (const pl of state.placements){ const d = kmBetween(latlng, pl.latlng); if (PROJECTS[pl.key].housing) nearHousing = Math.min(nearHousing, d); if (pl.key === 'warehouse') nearWarehouse = Math.min(nearWarehouse, d); }
+
+  pending = {key, latlng, distKm, brown, brownDist: nd, nearTransit, transitDist: td, tract: null, nearHousing, nearWarehouse, land: null};
+  // temporary pin
+  pending.marker = L.marker(latlng, {icon: pinIcon(key, true), interactive:false}).addTo(placedLayer);
+
+  $('svTitle').textContent = `Site survey: ${p.name}`;
+  $('svSub').textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)} · ${p.sub}`;
+  document.querySelectorAll('input[name=land]').forEach(i => i.checked = false);
+  $('svConfirm').disabled = true;
+  const img = $('svImg'); img.style.display = 'block';
+  const dLng = 0.0065, dLat = 0.0045;
+  img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${latlng.lng-dLng},${latlng.lat-dLat},${latlng.lng+dLng},${latlng.lat+dLat}&bboxSR=4326&size=500,380&format=jpg&f=image`;
+  img.onerror = () => { img.style.display = 'none'; };
+
+  $('svFacts').innerHTML = `<li><span>Distance to downtown</span><span>${distKm.toFixed(1)} km · ${distKm <= CORE_KM ? 'urban core' : distKm <= EDGE_KM ? 'inner ring' : 'outer edge'}</span></li>
+    <li><span>Nearest EPA cleanup record</span><span>${nearest ? esc(nearest.name) + '<br><small>' + esc(nearest.kind) + ', ' + (nd < 1 ? Math.round(nd*1000) + ' m' : nd.toFixed(1) + ' km') + ' away</small>' : 'none loaded'}</span></li>
+    <li><span>Census tract poverty rate</span><span id="svTract">looking up…</span></li>
+    <li><span>Nearest transit station you built</span><span>${nearTransit ? (td < 1 ? Math.round(td*1000) + ' m' : td.toFixed(1) + ' km') + (td <= TOD_RADIUS ? ' · within walking distance' : '') : 'none yet'}</span></li>`;
+  $('svStamps').innerHTML = (brown ? `<span class="stamp">Brownfield: cleanup required</span> ` : '') + (nearTransit && td <= TOD_RADIUS && (p.housing || key === 'grocery') ? `<span class="stamp green">Transit-oriented</span> ` : '');
+  $('surveyModal').classList.add('open');
+  updateSurveyCost();
+
+  const t = await tractAt(latlng);
+  if (!pending || pending.latlng !== latlng) return;
+  pending.tract = t;
+  const el = $('svTract');
+  if (t && t.B17020_calc_pctPovE != null){
+    el.innerHTML = `${t.B17020_calc_pctPovE.toFixed(1)}%${t.B17020_calc_pctPovE >= HIGH_NEED ? ' <span class="tag bad">high-need</span>' : ''}<br><small>${esc(t.NAME)}, ${esc(t.County)}</small>`;
+    if (t.B17020_calc_pctPovE >= HIGH_NEED) $('svStamps').insertAdjacentHTML('beforeend', `<span class="stamp plum">High-need tract</span>`);
+  } else el.textContent = 'no data for this location';
+  updateSurveyCost();
+}
+
+function projectCost(key, land, brown){
+  const p = PROJECTS[key]; let cost = p.cost * state.modifiers.costMult;
+  if (key === 'transit' && state.modifiers.transitHalf) cost /= 2;
+  if (land === 'developed' && state.modifiers.infillDiscount) cost = Math.max(1, cost - state.modifiers.infillDiscount);
+  const clean = brown ? cleanupCost(brown.code) : 0;
+  return {base: cost, clean, total: cost + clean};
+}
+function updateSurveyCost(){
+  if (!pending) return;
+  const land = (document.querySelector('input[name=land]:checked') || {}).value || null;
+  pending.land = land;
+  const c = projectCost(pending.key, land, pending.brown);
+  const lines = [`Project cost <b>${fmtM(c.base)}</b>`];
+  if (c.clean) lines.push(`site assessment &amp; cleanup <b>${fmtM(c.clean)}</b>`);
+  let html = lines.join(' + ') + ` = <b>${fmtM(c.total)}</b> · budget left after: ${fmtM(state.budget - c.total)}`;
+  const notes = [];
+  if (land === 'undeveloped' && !pending.brown) notes.push(`Consumes <b>${PROJECTS[pending.key].acres} acres</b> of greenfield.`);
+  if (land === 'undeveloped' && pending.distKm > EDGE_KM) notes.push('Far from downtown on open land: this is sprawl.');
+  if (pending.key === 'warehouse' && pending.tract && pending.tract.B17020_calc_pctPovE >= HIGH_NEED) notes.push('<span class="warn">A truck-heavy facility in a high-need tract raises an environmental justice concern.</span>');
+  if (pending.key === 'warehouse' && pending.nearHousing <= 0.5) notes.push('<span class="warn">Within 500 m of housing you built: incompatible land uses.</span>');
+  if (PROJECTS[pending.key].housing && pending.nearWarehouse <= 0.5) notes.push('<span class="warn">Within 500 m of your warehouse: residents will breathe the truck exhaust.</span>');
+  if (notes.length) html += '<br>' + notes.join(' ');
+  if (c.total > state.budget) html += '<br><span class="warn">Not enough budget.</span>';
+  $('svCost').innerHTML = html;
+  $('svConfirm').disabled = !land || land === 'water' || c.total > state.budget;
+}
+function cancelSurvey(){ if (pending && pending.marker) placedLayer.removeLayer(pending.marker); pending = null; $('surveyModal').classList.remove('open'); }
+function pinIcon(key, isPending){ const p = PROJECTS[key]; return L.divIcon({className:'', html:`<div class="pin${isPending ? ' pending' : ''}" style="--c:${p.color}">${p.glyph}</div>`, iconSize:[34,34], iconAnchor:[17,17], popupAnchor:[0,-16]}); }
+
+function confirmSurvey(){
+  if (!pending || !pending.land || pending.land === 'water') return;
+  const p = PROJECTS[pending.key], c = projectCost(pending.key, pending.land, pending.brown);
+  if (c.total > state.budget) return;
+  const pov = pending.tract ? pending.tract.B17020_calc_pctPovE : null;
+  const pl = {
+    id: Date.now(), round: state.round, key: pending.key, name: p.name, latlng: pending.latlng, distKm: pending.distKm,
+    land: pending.land, brown: pending.brown ? {name: pending.brown.name, kind: pending.brown.kind, code: pending.brown.code, dist: pending.brownDist} : null,
+    tract: pending.tract ? {name: pending.tract.NAME, county: pending.tract.County, pov} : null,
+    highNeed: pov != null && pov >= HIGH_NEED,
+    tod: !!(pending.nearTransit && pending.transitDist <= TOD_RADIUS && (p.housing || pending.key === 'transit' || pending.key === 'grocery')),
+    incompatible: (pending.key === 'warehouse' && pending.nearHousing <= 0.5) || (p.housing && pending.nearWarehouse <= 0.5),
+    cost: c.total, clean: c.clean, res: p.res, jobs: p.jobs,
+    greenAcres: pending.land === 'undeveloped' && !pending.brown ? p.acres : 0,
+    sprawl: pending.land === 'undeveloped' && pending.distKm > EDGE_KM, mitigated: false, affordable: false
+  };
+  state.budget -= c.total;
+  state.placements.push(pl); state.roundPlacements.push(pl);
+  placedLayer.removeLayer(pending.marker);
+  pl.marker = L.marker(pl.latlng, {icon: pinIcon(pl.key, false)}).bindPopup(placementPopup(pl)).addTo(placedLayer);
+  if (pl.key === 'transit') pl.circle = L.circle(pl.latlng, {radius: TOD_RADIUS*1000, color:'#1F6FB2', weight:1, dashArray:'4 4', fillOpacity:.06}).addTo(placedLayer);
+  pending = null; $('surveyModal').classList.remove('open');
+  // Re-evaluate TOD for earlier housing near a new station
+  if (pl.key === 'transit') state.placements.forEach(o => { if ((PROJECTS[o.key].housing || o.key === 'grocery') && !o.tod && kmBetween(o.latlng, pl.latlng) <= TOD_RADIUS){ o.tod = true; o.marker.setPopupContent(placementPopup(o)); } });
+  selectTool(null);
+  renderAll();
+  toast(`${p.name} built. ${PER_ROUND - state.roundPlacements.length} placement${PER_ROUND - state.roundPlacements.length === 1 ? '' : 's'} left this round.`);
+}
+function placementPopup(pl){
+  const tags = [];
+  if (pl.brown) tags.push('<span class="tag brown">brownfield reused</span>');
+  if (pl.land === 'undeveloped') tags.push('<span class="tag bad">greenfield</span>'); else tags.push('<span class="tag good">infill</span>');
+  if (pl.tod) tags.push('<span class="tag good">transit-oriented</span>');
+  if (pl.highNeed) tags.push('<span class="tag plum">high-need tract</span>');
+  if (pl.sprawl) tags.push('<span class="tag bad">sprawl</span>');
+  if (pl.incompatible) tags.push('<span class="tag bad">incompatible use</span>');
+  return `<h4>${PROJECTS[pl.key].glyph} ${esc(pl.name)}</h4>Round ${pl.round} · ${fmtM(pl.cost)}${pl.clean ? ` (incl. ${fmtM(pl.clean)} cleanup)` : ''}<br>${tags.join(' ')}<br><small>${pl.distKm.toFixed(1)} km from downtown${pl.tract ? ` · ${esc(pl.tract.name)}, poverty ${pl.tract.pov == null ? 'n/a' : pl.tract.pov.toFixed(1) + '%'}` : ''}${pl.brown ? `<br>EPA record: ${esc(pl.brown.name)}` : ''}</small>`;
+}
+function undoLast(){
+  const pl = state.roundPlacements.pop(); if (!pl) return;
+  state.placements = state.placements.filter(o => o !== pl);
+  state.budget += pl.cost;
+  placedLayer.removeLayer(pl.marker); if (pl.circle) placedLayer.removeLayer(pl.circle);
+  renderAll(); toast(`Removed ${pl.name}. Budget refunded.`);
+}
+
+/* =========================================================
+   Scoring
+   ========================================================= */
+function tallies(){
+  const t = {res:0, jobs:0, green:0, brown:0, parks:0, tod:0, sprawl:0, ejBonus:0, ejPenalty:0, incompatible:0, groceryHighNeed:0, affordable:0, infillRes:0};
+  for (const pl of state.placements){
+    t.res += pl.res; t.jobs += pl.jobs; t.green += pl.greenAcres;
+    if (pl.brown) t.brown++;
+    if (pl.key === 'park') t.parks++;
+    if (pl.tod && PROJECTS[pl.key].housing) t.tod++;
+    if (pl.sprawl) t.sprawl++;
+    if (pl.incompatible) t.incompatible++;
+    if (pl.land === 'developed' && PROJECTS[pl.key].housing) t.infillRes += pl.res;
+    if (pl.highNeed && (pl.key === 'park' || pl.key === 'grocery' || pl.key === 'transit')) t.ejBonus++;
+    if (pl.highNeed && pl.key === 'grocery') t.groceryHighNeed++;
+    if (pl.highNeed && pl.key === 'warehouse') t.ejPenalty += pl.mitigated ? 0.4 : 1;
+    if (pl.affordable) t.affordable++;
+  }
+  return t;
+}
+const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
+function scores(){
+  const t = tallies();
+  const housing = clamp(t.res / GOAL_RES * 100);
+  const jobs = clamp(t.jobs / GOAL_JOBS * 100);
+  let compact = 100 - t.green * 0.15 - t.sprawl * 8 + Math.min(20, t.tod * 5);
+  compact = clamp(compact);
+  const env = clamp(Math.min(60, t.brown * 20) + Math.min(40, t.parks * 10));
+  let equity = 50 + Math.min(45, t.ejBonus * 15) + Math.min(10, t.groceryHighNeed * 10) + t.affordable * 5 - t.ejPenalty * 25 - t.incompatible * 10;
+  equity = clamp(equity);
+  const total = Math.round(housing * .25 + jobs * .10 + compact * .25 + env * .15 + equity * .25);
+  const grade = total >= 85 ? 'A' : total >= 70 ? 'B' : total >= 55 ? 'C' : total >= 40 ? 'D' : 'F';
+  return {housing, jobs, compact, env, equity, total, grade, t};
+}
+function renderScores(){
+  const s = scores();
+  const rows = [['Housing goal', 'housing', s.housing], ['Jobs goal', 'jobs', s.jobs], ['Compact growth', 'compact', s.compact], ['Environment', 'env', s.env], ['Equity (EJ)', 'equity', s.equity]];
+  $('scores').innerHTML = rows.map(r => `<div class="score ${r[1]}"><span>${r[0]}</span><span class="track"><i style="width:${r[2]}%"></i></span><span class="val">${Math.round(r[2])}</span></div>`).join('') +
+    `<div class="total-line"><span>Smart growth score</span><span class="num">${s.total} <small style="font:600 14px Barlow">/ 100 · ${s.grade}</small></span></div>`;
+}
+function renderStats(){
+  const s = scores(), t = s.t;
+  $('sRound').textContent = state.downtown ? Math.min(state.round, ROUNDS) : '—';
+  $('sBudget').textContent = fmtM(state.budget); $('bBudget').style.width = clamp(state.budget / START_BUDGET * 100) + '%';
+  $('sRes').textContent = fmtN(t.res); $('bRes').style.width = s.housing + '%';
+  $('sJobs').textContent = fmtN(t.jobs); $('bJobs').style.width = s.jobs + '%';
+  $('sGreen').textContent = fmtN(t.green); $('sBrown').textContent = t.brown;
+  $('btnUndo').disabled = state.roundPlacements.length === 0 || state.finished;
+  $('btnEndRound').disabled = !state.downtown || state.finished;
+  $('btnEndRound').textContent = state.round >= ROUNDS ? 'End final round' : 'End round ' + state.round;
+}
+function renderLog(){
+  const ul = $('log');
+  if (!state.placements.length && !state.events.length){ ul.innerHTML = '<li class="empty">Nothing built yet.</li>'; return; }
+  const items = [];
+  for (const pl of state.placements){
+    const tags = [pl.brown ? '<span class="tag brown">brownfield</span>' : '', pl.land === 'undeveloped' ? '<span class="tag bad">greenfield</span>' : '<span class="tag good">infill</span>', pl.tod ? '<span class="tag good">TOD</span>' : '', pl.highNeed ? '<span class="tag plum">high-need</span>' : '', pl.sprawl ? '<span class="tag bad">sprawl</span>' : '', pl.incompatible ? '<span class="tag bad">conflict</span>' : '', pl.mitigated ? '<span class="tag good">mitigated</span>' : '', pl.affordable ? '<span class="tag good">20% affordable</span>' : ''].join('');
+    items.push({r: pl.round, html: `<li><div class="l-head"><span>R${pl.round} · ${PROJECTS[pl.key].glyph} ${esc(pl.name)}</span><span>${fmtM(-pl.cost)}</span></div><div class="l-sub">${tags}</div></li>`});
+  }
+  for (const ev of state.events) items.push({r: ev.round + 0.5, html: `<li><div class="l-head"><span>R${ev.round} event · ${esc(ev.title)}</span><span>${ev.delta ? fmtM(ev.delta) : ''}</span></div><div class="l-sub">${esc(ev.choice || '')}</div></li>`});
+  ul.innerHTML = items.sort((a, b) => b.r - a.r).map(i => i.html).join('');
+}
+function renderAll(){ renderScores(); renderStats(); renderLog(); }
+
+/* =========================================================
+   Events
+   ========================================================= */
+function buildEvents(){
+  const rp = state.roundPlacements, t = tallies(), evs = [];
+  const whHigh = rp.find(p => p.key === 'warehouse' && p.highNeed && !p.mitigated);
+  if (whHigh) evs.push({
+    title:'Council chambers overflow', 
+    body:`Residents of ${esc(whHigh.tract.name)} (poverty rate ${whHigh.tract.pov.toFixed(0)}%) pack the council meeting. The logistics warehouse you approved will send hundreds of diesel trucks a day past their homes. They point out that neighborhoods like theirs have absorbed rail yards, highways and factories for a century while wealthier areas said "not in my backyard."`,
+    concept:'<b>Environmental justice</b> asks who bears the burdens of growth. A locally unwanted land use (LULU) is easiest to site where residents have the least political power, which is exactly why planners are expected to look at the data before deciding.',
+    choices:[{label:'Fund a truck-route plan, tree buffer and air monitoring', sub:'−$3M. Cuts the equity penalty by more than half.', apply(){ state.budget -= 3; whHigh.mitigated = true; return -3; }},
+             {label:'Proceed as approved', sub:'No cost now. The full equity penalty stands.', apply(){ return 0; }}]
+  });
+  const housingHigh = rp.find(p => (p.key === 'mixed' || p.key === 'town') && p.highNeed && !p.affordable);
+  if (housingHigh) evs.push({
+    title:'Who gets to stay?',
+    body:`Your new ${housingHigh.name.toLowerCase()} in ${esc(housingHigh.tract.name)} is bringing investment to a neighborhood that has waited decades for it. Landlords nearby have already begun raising rents, and long-time residents worry they will be priced out of the place they made livable.`,
+    concept:'<b>Gentrification</b> and <b>displacement</b>: infill in a lower-income neighborhood is smart growth, but without protections it can push out the people already there. Inclusionary zoning requires a share of new units to be affordable.',
+    choices:[{label:'Require 20% of units to be affordable', sub:'−$2M subsidy. Equity bonus.', apply(){ state.budget -= 2; housingHigh.affordable = true; return -2; }},
+             {label:'Let the market decide', sub:'No cost. No equity change.', apply(){ return 0; }}]
+  });
+  const brownThisRound = rp.filter(p => p.brown).length;
+  if (brownThisRound) evs.push({
+    title:'EPA Brownfields grant approved',
+    body:`Because you chose to reuse ${brownThisRound === 1 ? 'a contaminated site' : brownThisRound + ' contaminated sites'} instead of open land, an EPA Brownfields assessment grant reimburses part of the cleanup. <b>+$${2 * brownThisRound}M</b> returns to your budget.`,
+    concept:'<b>Brownfield redevelopment</b> costs more up front, which is why governments subsidize it: it recycles land, reuses existing streets and pipes, and takes a hazard out of a neighborhood.',
+    choices:[{label:'Accept the grant', sub:`+$${2 * brownThisRound}M`, apply(){ state.budget += 2 * brownThisRound; return 2 * brownThisRound; }}]
+  });
+  const greenRound = rp.reduce((a, p) => a + p.greenAcres, 0);
+  if (greenRound >= 100) { const bill = Math.round(greenRound / 40); evs.push({
+    title:'The county sends a bill',
+    body:`Your ${greenRound} acres of new greenfield development this round sit beyond the existing water, sewer and road network. Extending them costs <b>$${bill}M</b>, and the county expects the city to pay.`,
+    concept:'The hidden cost of <b>sprawl</b>: every mile of new pipe and pavement must be built, then maintained forever. Compact, infill development reuses infrastructure that is already paid for.',
+    choices:[{label:'Pay for the extensions', sub:`−$${bill}M`, apply(){ state.budget -= bill; return -bill; }}]
+  }); }
+  const sprawlSub = rp.find(p => p.key === 'subdiv' && p.sprawl && !p.tod);
+  if (sprawlSub && !evs.find(e => e.title === 'The county sends a bill')) evs.push({
+    title:'Commute complaints',
+    body:'The new subdivision has one road in and out, no sidewalks to anywhere useful and no bus. Every errand is a car trip, and the state highway on-ramp already backs up each morning.',
+    concept:'<b>Vehicle miles traveled</b> rise with low-density, single-use development far from jobs and transit. Smart growth pairs housing with transportation choices.',
+    choices:[{label:'Noted', sub:'Compact-growth score already reflects this.', apply(){ return 0; }}]
+  });
+  const incompat = rp.find(p => p.incompatible);
+  if (incompat && !whHigh) evs.push({
+    title:'Zoning conflict',
+    body:`Trucks from the warehouse now idle beside ${incompat.key === 'warehouse' ? 'homes you approved earlier' : 'the new homes'}. Residents report noise at 4 a.m. and diesel fumes in their yards.`,
+    concept:'Mixing uses is a smart growth principle, but <b>compatible</b> uses: homes above shops, not homes beside loading docks. Buffers and separation still matter for heavy industry.',
+    choices:[{label:'Noted', sub:'Equity score reflects the conflict.', apply(){ return 0; }}]
+  });
+  if (state.round >= 3 && !state.once.food && t.groceryHighNeed === 0 && tracts.some(f => f.properties.B17020_calc_pctPovE >= HIGH_NEED)){
+    state.once.food = true;
+    evs.push({ title:'Food access report',
+      body:'The health department reports that the highest-poverty tracts in your planning area still have no full-service grocery store within walking distance. Residents rely on convenience stores and long bus trips for fresh food.',
+      concept:'A <b>food desert</b> is an equity problem with a geographic solution. A grocery store placed in a high-need tract earns an equity bonus in this game, and jobs.',
+      choices:[{label:'Noted', sub:'Consider where your next grocery goes.', apply(){ return 0; }}] });
+  }
+  // Random background event if nothing was triggered, or as a second card
+  const pool = [
+    {title:'Interest rates rise', body:'Borrowing gets more expensive. Construction costs run 10% higher next round.', concept:'Development responds to money as much as to plans. Expensive credit favors cheap land at the edge unless policy pushes the other way.', choices:[{label:'Understood', sub:'Costs ×1.1 next round', apply(){ state.modifiers.costMult = 1.1; return 0; }}]},
+    {title:'State infill tax credit', body:'The state launches a credit for building on already-developed land. Projects on developed sites cost $2M less next round.', concept:'<b>Incentives</b> like this are how governments steer growth toward infill without banning anything.', choices:[{label:'Great', sub:'−$2M on infill next round', apply(){ state.modifiers.infillDiscount = 2; return 0; }}]},
+    {title:'Federal transit grant', body:'A federal grant will cover half the cost of any transit station you build next round.', concept:'<b>Transit-oriented development</b> only works if the transit exists. Stations are the anchor for compact growth around them.', choices:[{label:'Apply', sub:'Stations half price next round', apply(){ state.modifiers.transitHalf = true; return 0; }}]},
+    {title:'Residents ask for green space', body:'A citywide survey finds that most residents want a park within a 10-minute walk of home, and the biggest gaps are in the lowest-income tracts.', concept:'Access to <b>parks</b> is unevenly distributed. Placing one in a high-need tract earns an equity bonus and an environment bonus.', choices:[{label:'Noted', sub:'', apply(){ return 0; }}]},
+    {title:'Farmland preservation vote', body:'Voters approve a measure to protect working farms at the urban edge. Every greenfield acre you build on now draws public criticism.', concept:'<b>Urban growth boundaries</b> and farmland trusts are tools cities use to make sprawl harder and infill easier.', choices:[{label:'Noted', sub:'', apply(){ return 0; }}]}
+  ];
+  if (evs.length < 2) evs.push(pool[Math.floor(Math.random() * pool.length)]);
+  return evs.slice(0, 2);
+}
+
+function endRound(){
+  if (state.finished) return;
+  if (state.roundPlacements.length === 0 && !confirm('You have not built anything this round. End it anyway?')) return;
+  // reset one-round modifiers after this round's costs were paid
+  eventQueue = buildEvents();
+  state.modifiers = {costMult:1, infillDiscount:0, transitHalf:false};
+  showNextEvent();
+}
+function showNextEvent(){
+  const ev = eventQueue.shift();
+  if (!ev){
+    $('eventModal').classList.remove('open');
+    state.roundPlacements = [];
+    if (state.round >= ROUNDS){ finish(); return; }
+    state.round++; renderAll(); toast(`Round ${state.round} begins. ${state.round === ROUNDS ? 'Last round!' : ''}`);
+    return;
+  }
+  $('evKicker').textContent = `End of round ${state.round} · ${eventQueue.length + 1} ${eventQueue.length ? 'cards' : 'card'}`;
+  $('evTitle').textContent = ev.title; $('evBody').innerHTML = ev.body; $('evConcept').innerHTML = ev.concept;
+  const wrap = $('evChoices'); wrap.innerHTML = '';
+  ev.choices.forEach(ch => {
+    const b = document.createElement('button'); b.className = 'btn'; b.innerHTML = `<strong>${esc(ch.label)}</strong>${esc(ch.sub || '')}`;
+    b.addEventListener('click', () => { const d = ch.apply(); state.events.push({round: state.round, title: ev.title, choice: ch.label, delta: d}); renderAll(); showNextEvent(); });
+    wrap.appendChild(b);
+  });
+  $('eventModal').classList.add('open');
+}
+
+/* =========================================================
+   Report
+   ========================================================= */
+function hashCode(str){ let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36).toUpperCase().padStart(7, '0'); }
+function finish(){
+  state.finished = true; selectTool(null);
+  const s = scores(), t = s.t, now = new Date();
+  const ring = s.grade === 'A' || s.grade === 'B' ? '' : s.grade === 'C' ? 'mid' : 'low';
+  const log = state.placements.map(p => `${p.round}|${p.key}|${p.latlng.lat.toFixed(5)}|${p.latlng.lng.toFixed(5)}|${p.land}|${p.brown ? 1 : 0}|${p.highNeed ? 1 : 0}|${p.cost}`).join(';') + '#' + state.events.map(e => e.round + e.title + e.choice).join(';') + '#' + state.name + state.klass;
+  const code = hashCode(log) + '-' + hashCode(log.split('').reverse().join(''));
+  const infillShare = t.res ? Math.round(t.infillRes / t.res * 100) : 0;
+  const summary = [
+    `Housed ${fmtN(t.res)} of ${fmtN(GOAL_RES)} residents (${infillShare}% on already-developed land) and created ${fmtN(t.jobs)} of ${fmtN(GOAL_JOBS)} jobs.`,
+    `Used ${fmtN(t.green)} acres of greenfield; reused ${t.brown} EPA-listed contaminated site${t.brown === 1 ? '' : 's'}; built ${t.parks} park${t.parks === 1 ? '' : 's'}.`,
+    `${t.tod} housing project${t.tod === 1 ? '' : 's'} within walking distance of a transit station you built.`,
+    `Equity: ${t.ejBonus} amenit${t.ejBonus === 1 ? 'y' : 'ies'} placed in high-need tracts; ${Math.round(t.ejPenalty * 10) / 10} unmitigated LULU penalty point${t.ejPenalty === 1 ? '' : 's'}; ${t.incompatible} land-use conflict${t.incompatible === 1 ? '' : 's'}; ${t.affordable} affordable-housing requirement${t.affordable === 1 ? '' : 's'}.`,
+    `Budget remaining: ${fmtM(state.budget)} of $${START_BUDGET}M.`
+  ];
+  const rows = state.placements.map(p => `<tr><td>${p.round}</td><td>${PROJECTS[p.key].glyph} ${esc(p.name)}</td><td>${p.latlng.lat.toFixed(4)}, ${p.latlng.lng.toFixed(4)}<br>${p.distKm.toFixed(1)} km from downtown</td><td>${p.land === 'developed' ? 'Infill' : 'Greenfield'}${p.brown ? `<br>Brownfield: ${esc(p.brown.name)}` : ''}${p.tod ? '<br>TOD' : ''}${p.sprawl ? '<br>Sprawl' : ''}</td><td>${p.tract ? `${esc(p.tract.name)}<br>${p.tract.pov == null ? 'n/a' : p.tract.pov.toFixed(1) + '% poverty'}${p.highNeed ? ' (high-need)' : ''}` : 'n/a'}${p.mitigated ? '<br>Mitigated' : ''}${p.affordable ? '<br>20% affordable' : ''}${p.incompatible ? '<br>Use conflict' : ''}</td><td>${fmtM(p.cost)}</td></tr>`).join('');
+  const evRows = state.events.map(e => `<tr><td>${e.round}</td><td colspan="3">${esc(e.title)}</td><td>${esc(e.choice)}</td><td>${e.delta ? fmtM(e.delta) : ''}</td></tr>`).join('');
+  $('reportCard').innerHTML = `
+    <div class="report-head">
+      <div><h2>Grow Smart planning report</h2><div class="who">${esc(state.name)}${state.klass ? ' · ' + esc(state.klass) : ''}<br>${esc(state.city)} · ${now.toLocaleDateString()} ${now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · ${Math.min(state.round, ROUNDS)} of ${ROUNDS} rounds played</div></div>
+      <div class="grade ${ring}">${s.grade}</div>
+    </div>
+    <div class="r-scores">
+      <div class="r-score"><span class="num">${Math.round(s.housing)}</span><small>Housing goal</small><em>25% weight</em></div>
+      <div class="r-score"><span class="num">${Math.round(s.jobs)}</span><small>Jobs goal</small><em>10% weight</em></div>
+      <div class="r-score"><span class="num">${Math.round(s.compact)}</span><small>Compact growth</small><em>25% weight</em></div>
+      <div class="r-score"><span class="num">${Math.round(s.env)}</span><small>Environment</small><em>15% weight</em></div>
+      <div class="r-score"><span class="num">${Math.round(s.equity)}</span><small>Equity (EJ)</small><em>25% weight</em></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><h3 style="margin:0">Smart growth score: <span class="num" style="font-size:28px">${s.total}</span> / 100</h3></div>
+    <ul class="report-summary">${summary.map(x => `<li>${x}</li>`).join('')}</ul>
+    <h3>Decisions</h3>
+    <table class="r-table"><thead><tr><th>Round</th><th>Project</th><th>Location</th><th>Site</th><th>Census tract</th><th>Cost</th></tr></thead><tbody>${rows || '<tr><td colspan="6">No projects built.</td></tr>'}</tbody></table>
+    ${evRows ? `<h3>Events and choices</h3><table class="r-table"><thead><tr><th>Round</th><th colspan="3">Event</th><th>Choice</th><th>Budget</th></tr></thead><tbody>${evRows}</tbody></table>` : ''}
+    <div class="snapshot" id="snapshot"></div>
+    <div class="r-foot"><span>Data: EPA Cleanups in My Community (FRS) · U.S. Census Bureau ACS 2019–2023 5-year (Esri Living Atlas) · Esri basemaps</span><span>Verification code <code>${code}</code></span></div>`;
+  state.code = code;
+  renderAll();
+  $('reportModal').classList.add('open');
+}
+async function saveReportPng(){
+  const btn = $('btnPng'); btn.disabled = true; btn.textContent = 'Rendering…';
+  try{
+    const canvas = await html2canvas($('reportCard'), {scale: 2, backgroundColor:'#ffffff', useCORS:true});
+    const a = document.createElement('a'); a.download = `grow-smart-report-${(state.name || 'planner').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`; a.href = canvas.toDataURL('image/png'); a.click();
+    toast('Report image saved.');
+  }catch(e){ console.error(e); toast('Could not render the image. Use a screenshot or Print / save PDF instead.', 4000); }
+  btn.disabled = false; btn.textContent = 'Save report as image';
+}
+async function addMapSnapshot(){
+  const btn = $('btnMapSnap'); btn.disabled = true; btn.textContent = 'Capturing map…';
+  $('reportModal').classList.remove('open');
+  await new Promise(r => setTimeout(r, 350));
+  try{
+    const canvas = await html2canvas($('map'), {useCORS:true, allowTaint:false, scale:1, logging:false, ignoreElements: el => el.classList && (el.classList.contains('leaflet-control-container'))});
+    const url = canvas.toDataURL('image/png');
+    $('snapshot').innerHTML = `<h3>Map at the end of the game</h3><img src="${url}" alt="Map snapshot">`;
+    toast('Map snapshot added to the report.');
+  }catch(e){ console.error(e); toast('Map tiles could not be captured. Take a screenshot of the map instead.', 4500); }
+  $('reportModal').classList.add('open');
+  btn.disabled = false; btn.textContent = 'Add map snapshot';
+}
+function downloadCsv(){
+  const s = scores();
+  const head = ['name','class','city','round','project','lat','lng','km_from_downtown','land','brownfield_site','tract','tract_poverty_pct','high_need','tod','sprawl','incompatible','mitigated','affordable','cost_M'];
+  const lines = [head.join(',')];
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  for (const p of state.placements) lines.push([state.name, state.klass, state.city, p.round, p.name, p.latlng.lat.toFixed(5), p.latlng.lng.toFixed(5), p.distKm.toFixed(2), p.land, p.brown ? p.brown.name : '', p.tract ? p.tract.name : '', p.tract && p.tract.pov != null ? p.tract.pov.toFixed(1) : '', p.highNeed, p.tod, p.sprawl, p.incompatible, p.mitigated, p.affordable, p.cost].map(q).join(','));
+  lines.push(''); lines.push(['event_round','event','choice','budget_change_M'].join(','));
+  for (const e of state.events) lines.push([e.round, e.title, e.choice, e.delta || 0].map(q).join(','));
+  lines.push(''); lines.push(['score_housing','score_jobs','score_compact','score_environment','score_equity','total','grade','budget_left_M','verification_code'].join(','));
+  lines.push([Math.round(s.housing), Math.round(s.jobs), Math.round(s.compact), Math.round(s.env), Math.round(s.equity), s.total, s.grade, state.budget, state.code || ''].map(q).join(','));
+  const blob = new Blob(['\ufeff' + lines.join('\n')], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'grow-smart-log.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+</script>
+</body>
+</html>
