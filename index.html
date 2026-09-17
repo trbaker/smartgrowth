@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-HZWNB3WHS6"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-HZWNB3WHS6');
+</script>
 <title>Grow Smart — a smart growth planning game</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
@@ -95,6 +103,9 @@
 
   .round-actions{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);background:var(--paper)}
   .round-actions .btn{flex:1}
+  .credit{font-size:12px;color:var(--muted);text-align:center;padding:6px 14px 8px;border-top:1px solid var(--fog);background:var(--paper)}
+  .credit a{color:var(--muted);text-decoration:underline}
+  .credit a:hover{color:var(--ink)}
 
   /* Data status */
   .status{font-size:12px;color:var(--muted);padding:6px 14px;border-top:1px solid var(--fog);display:flex;gap:8px;align-items:center;min-height:30px}
@@ -250,6 +261,7 @@
       <button class="btn" id="btnUndo" disabled>Undo last</button>
       <button class="btn primary" id="btnEndRound" disabled>End round</button>
     </div>
+    <div class="credit">App designed by <a href="https://tbaker.com" target="_blank" rel="noopener">Tom Baker</a></div>
   </aside>
   <div class="map-wrap">
     <div id="map"></div>
